@@ -253,3 +253,82 @@ FROM notifications
 WHERE notificationType = 'Placement'
 AND createdAt >= NOW() - INTERVAL '7 days';
 ```
+
+# Stage 4
+
+Currently, notifications are being fetched from the database every time a student loads a page. As the number of users increases, this can create a significant load on the database and increase response time.
+To improve performance, I would use the following approaches:
+
+## 1. Redis Caching
+
+Instead of querying the database for every request, frequently accessed notifications can be stored in Redis cache.
+
+### Advantages
+
+- Reduces database load.
+- Faster response times.
+- Improves user experience.
+
+### Tradeoffs
+
+- Requires additional infrastructure.
+- Cache invalidation needs to be handled carefully.
+
+---
+
+## 2. Pagination
+
+Instead of loading all notifications at once, notifications should be fetched in smaller batches.
+
+Example:
+
+```http
+GET /api/v1/notifications?page=1&limit=20
+```
+
+### Advantages
+
+- Reduces database queries.
+- Faster API responses.
+- Lower memory usage.
+
+### Tradeoffs
+
+- Requires additional frontend handling for pagination.
+---
+
+## 3. Real-Time Notifications using WebSockets
+
+Instead of repeatedly fetching notifications, the server can push new notifications to students using WebSockets.
+
+### Advantages
+
+- Eliminates unnecessary polling.
+- Reduces database load.
+- Provides real-time updates.
+
+### Tradeoffs
+
+- More complex implementation.
+- Requires management of active connections.
+
+---
+
+## 4. Database Indexing and Read Replicas
+
+Indexes can improve query performance, while read replicas can distribute read traffic across multiple database instances.
+
+### Advantages
+
+- Faster queries.
+- Better scalability.
+- Reduced load on the primary database.
+
+### Tradeoffs
+
+- Additional infrastructure cost.
+- Replication lag can occur.
+
+---
+
+In my opinion, the best approach would be to combine Redis caching, pagination, WebSockets, and database optimization techniques to improve performance and reduce database load.
