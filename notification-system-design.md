@@ -332,3 +332,108 @@ Indexes can improve query performance, while read replicas can distribute read t
 ---
 
 In my opinion, the best approach would be to combine Redis caching, pagination, WebSockets, and database optimization techniques to improve performance and reduce database load.
+
+# Stage 5
+
+The proposed implementation is:
+
+function notify_all(student_ids: array, message: string):
+    for student_id in student_ids:
+        send_email(student_id, message)
+        save_to_db(student_id, message)
+        push_to_app(student_id, message)
+
+
+## What are the problems with this implementation?
+
+I think this implementation has a few issues:
+
+- It processes one student at a time, which will be very slow for 50,000 students.
+- If the email service fails, some students may not receive notifications.
+- There is no retry mechanism for failed notifications.
+- Email sending, database saving, and push notifications are all dependent on each other.
+- The system may become very slow during peak usage.
+
+---
+
+## What if `send_email()` fails for 200 students?
+
+If the email service fails for 200 students, those students will not receive the notification. Therefore, failed requests should be stored and retried later instead of stopping the entire process.
+
+
+## How would I redesign this?
+
+Instead of processing notifications one by one, I would process them asynchronously using a queue.
+
+The flow would be:
+1.HR/Admin
+2.Notification API
+3.Queue
+4.Workers
+5.Database + Email + Push Notification
+
+This allows multiple notifications to be processed at the same time, which improves performance and reliability.
+
+## Should saving to the database and sending emails happen together?
+
+No.
+I would first save the notification to the database to make sure that the notification is not lost. After saving it, I would send emails and push notifications separately. This way, even if the email service fails, the notification information will still be available in the database.
+
+## Revised Pseudocode
+
+
+```
+notify_all(student_ids, message)
+
+    for each student_id in student_ids
+
+        save_notification(student_id, message)
+
+        add_notification_to_queue(student_id, message)
+
+
+process_notifications()
+
+    while queue is not empty
+
+        notification = get_next_notification()
+
+        try
+
+            send_email(
+                notification.student_id,
+                notification.message
+            )
+
+            send_push_notification(
+                notification.student_id,
+                notification.message
+            )
+
+        catch error
+
+            retry_notification(notification)
+```
+
+
+## Advantages
+
+- Faster processing.
+- Better performance.
+- Supports retrying failed notifications.
+- More reliable.
+- Can handle a large number of students.
+
+# Stage 6
+
+To implement the Priority Inbox feature, I assigned different weights to different notification types.
+
+- Placement = 3
+- Result = 2
+- Event = 1
+
+The final priority is determined using both notification type and notification recency. Notifications with higher weight are prioritized first, and among notifications with the same weight, the most recent notification receives higher priority.
+
+To calculate the top notifications, I first calculate a priority score for every notification and then sort the notifications in descending order of priority. Finally, I display the top 10 notifications.
+
+If new notifications continue to arrive, I would maintain the top 10 efficiently using a min-heap of fixed size 10. This avoids repeatedly sorting all notifications and provides better performance.

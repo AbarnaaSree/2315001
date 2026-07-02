@@ -1,83 +1,204 @@
-import { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  Alert,
-  Badge,
   Box,
-  CircularProgress,
-  Divider,
+  Card,
+  CardContent,
+  Typography,
+  Select,
+  MenuItem,
   Pagination,
   Stack,
-  Typography,
+  Chip,
+  Switch,
+  FormControlLabel,
+  Divider
 } from "@mui/material";
-import NotificationsIcon from "@mui/icons-material/Notifications";
 
-import { NotificationCard } from "../components/NotificationCard";
-import { NotificationFilter } from "../components/NotificationFilter";
-import { useNotifications } from "../hooks/useNotifications";
+import { Log } from "../logger/logger";
 
-export function NotificationsPage() {
-  const [filter, setFilter] = useState();
-  const [page, setPage] = useState("1");
+const BASE_URL =
+  "http://4.224.186.213/evaluation-service/notifications";
 
-  const { notifications, totalPages, loading, error } = useNotifications();
+const TYPES = ["Event", "Result", "Placement"];
 
-  const unreadCount = 2;
+const WEIGHTS = {
+  Placement: 3,
+  Result: 2,
+  Event: 1
+};
 
-  const handleFilterChange = (newFilter) => {
+function calculatePriority(n) {
+  const weight = WEIGHTS[n.Type] || 0;
+  const time = new Date(n.Timestamp).getTime() || 0;
+  return weight * 1e12 + time;
+}
 
+export default function NotificationsPage() {
+  const [notifications, setNotifications] = useState([]);
+  const [type, setType] = useState("");
+  const [page, setPage] = useState(1);
+  const [priorityMode, setPriorityMode] = useState(false);
+
+  const limit = 10;
+
+  const getViewed = () =>
+    JSON.parse(localStorage.getItem("viewed") || "[]");
+
+  const markViewed = (id) => {
+    const viewed = getViewed();
+    if (!viewed.includes(id)) {
+      viewed.push(id);
+      localStorage.setItem("viewed", JSON.stringify(viewed));
+    }
   };
 
-  const handlePageChange = (_, newPage) => {
+  const fetchData = async () => {
+    try {
+      await Log("info", "Fetching notifications");
 
+      let url = `${BASE_URL}?page=${page}&limit=${limit}`;
+
+      if (type) url += `&notification_type=${type}`;
+
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${process.env.REACT_APP_TOKEN}`
+        }
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText);
+      }
+
+      const data = await res.json();
+
+      setNotifications(data.notifications || []);
+
+      await Log("info", "Fetched notifications successfully");
+    } catch (err) {
+      await Log("error", err.message);
+      console.error(err);
+    }
   };
+
+  useEffect(() => {
+    fetchData();
+  }, [page, type]);
+
+  const processedNotifications = useMemo(() => {
+    let list = [...notifications];
+
+    if (priorityMode) {
+      list = list
+        .map((n) => ({
+          ...n,
+          priority: calculatePriority(n)
+        }))
+        .sort((a, b) => b.priority - a.priority);
+    }
+
+    return list;
+  }, [notifications, priorityMode]);
 
   return (
-    <Box sx={{ maxWidth: 720, mx: "auto", px: 2, py: 4 }}>
-      <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>
-        <Badge badgeContent={unreadCount} color="primary" max={99}>
-          <NotificationsIcon sx={{ fontSize: 28 }} />
-        </Badge>
-        <Typography variant="h5" fontWeight={700}>
-          Notifications
-        </Typography>
+    <Box sx={{ padding: 3, maxWidth: 900, margin: "auto" }}>
+      <Typography variant="h5" sx={{ mb: 2 }}>
+        Notifications Dashboard
+      </Typography>
+
+      {/* CONTROLS */}
+      <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+
+        <Select
+          value={type}
+          onChange={(e) => {
+            setType(e.target.value);
+            setPage(1);
+          }}
+          displayEmpty
+          size="small"
+        >
+          <MenuItem value="">All Types</MenuItem>
+          {TYPES.map((t) => (
+            <MenuItem key={t} value={t}>
+              {t}
+            </MenuItem>
+          ))}
+        </Select>
+
+        <FormControlLabel
+          control={
+            <Switch
+              checked={priorityMode}
+              onChange={(e) => setPriorityMode(e.target.checked)}
+            />
+          }
+          label="Priority Mode"
+        />
       </Stack>
 
-      <Divider sx={{ mb: 3 }} />
+      <Divider sx={{ mb: 2 }} />
 
-      <Box sx={{ marginBottom: 3 }}>
-        <NotificationFilter value={filter} onChange={handleFilterChange} />
-      </Box>
+      {/* LIST */}
+      <Stack spacing={2}>
+        {processedNotifications.map((n) => {
+          const viewed = getViewed().includes(n.ID);
 
-      {true && (
-        <Box display="flex" justifyContent="center" py={6}>
-          <CircularProgress />
-        </Box>
-      )}
+          return (
+            <Card
+              key={n.ID}
+              onClick={() => markViewed(n.ID)}
+              sx={{
+                cursor: "pointer",
+                backgroundColor: viewed ? "#f5f5f5" : "#fff",
+                borderLeft: viewed
+                  ? "4px solid gray"
+                  : "4px solid #1976d2",
+                transition: "0.2s"
+              }}
+            >
+              <CardContent>
 
-      {!loading && error && (
-        <Alert severity="error">Failed to load notifications: {error}</Alert>
-      )}
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="h6">
+                    {n.Type}
+                  </Typography>
 
-      {loading && !error && notifications.length == "0" && (
-        <Alert severity="info">Something message</Alert>
-      )}
+                  {viewed && (
+                    <Chip label="Viewed" size="small" />
+                  )}
 
-      {loading && !error && notifications.length > 0 && (
-        <Stack spacing={1.5}>
-          {notifications.map((n) => (
-            <></>
-          ))}
-        </Stack>
-      )}
+                  {priorityMode && (
+                    <Chip
+                      label={`Priority ${calculatePriority(n)}`}
+                      size="small"
+                      color="primary"
+                    />
+                  )}
+                </Stack>
 
-      {!loading && (
-        <Box display="flex" justifyContent="center" mt={4}>
+                <Typography variant="body1">
+                  {n.Message}
+                </Typography>
+
+                <Typography variant="caption" color="text.secondary">
+                  {n.Timestamp}
+                </Typography>
+
+              </CardContent>
+            </Card>
+          );
+        })}
+      </Stack>
+
+      {/* PAGINATION (disabled in priority mode for simplicity) */}
+      {!priorityMode && (
+        <Box sx={{ mt: 3, display: "flex", justifyContent: "center" }}>
           <Pagination
-            count={totalPages}
+            count={10}
             page={page}
-            onChange={handlePageChange}
-            color="primary"
-            shape="rounded"
+            onChange={(e, value) => setPage(value)}
           />
         </Box>
       )}
