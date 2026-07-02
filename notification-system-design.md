@@ -104,23 +104,19 @@ I chose PostgreSQL because it provides reliable transactions (ACID properties), 
 
 ### Students Table
 
-| Column | Data Type |
-|---------|-----------|
-| id | BIGINT PRIMARY KEY |
-| name | VARCHAR(100) |
-| email | VARCHAR(100) |
-| created_at | TIMESTAMP |
+ID – BIGINT (Primary Key)
+Name – VARCHAR(100)
+Email – VARCHAR(100)
+Created At – TIMESTAMP
 
 ### Notifications Table
 
-| Column | Data Type |
-|---------|-----------|
-| id | UUID PRIMARY KEY |
-| student_id | BIGINT |
-| notification_type | ENUM('Placement','Event','Result') |
-| message | TEXT |
-| is_read | BOOLEAN |
-| created_at | TIMESTAMP |
+ID – UUID (Primary Key)
+Student ID – BIGINT
+Notification Type – ENUM('Placement', 'Event', 'Result')
+Message – TEXT
+Is Read – BOOLEAN
+Created At – TIMESTAMP
 
 ---
 
@@ -193,4 +189,67 @@ INSERT INTO notifications
 (student_id, notification_type, message, is_read, created_at)
 VALUES
 (1042, 'Placement', 'Google hiring for SDE roles', false, NOW());
+```
+
+# Stage 3
+
+
+The given query is:
+
+```sql
+SELECT *
+FROM notifications
+WHERE studentID = 1042
+AND isRead = false
+ORDER BY createdAt ASC;
+```
+
+The query is accurate because it fetches all unread notifications for a specific student and sorts them by the time they were created.
+
+---
+
+## Why is this query slow?
+
+The database now contains around 5,000,000 notifications. If proper indexes are not present, the database has to scan a large number of records to find the unread notifications of a particular student.
+
+The query is filtering on `studentID` and `isRead` and then sorting by `createdAt`. Performing these operations on a large table without proper indexing will increase the execution time significantly.
+
+---
+
+## What would I change?
+
+I would create a composite index on the columns used in filtering and sorting.
+
+```sql
+CREATE INDEX idx_notifications
+ON notifications(studentID, isRead, createdAt);
+```
+
+This allows the database to quickly find unread notifications for a student and return them in the required order.
+
+Without an index, the query complexity is approximately O(n), where n is the number of rows in the table. After adding the index, the lookup cost is reduced significantly and approaches O(log n).
+
+---
+
+## Should we add indexes on every column?
+
+No, adding indexes on every column is not a good practice.
+
+Although indexes improve read performance, they also:
+
+- Increase storage usage.
+- Slow down INSERT and UPDATE operations.
+- Increase maintenance overhead.
+
+Therefore, indexes should only be created on columns that are frequently used in filtering, sorting, and searching.
+
+---
+
+## Query to find all students who received placement notifications in the last 7 days
+
+```sql
+SELECT DISTINCT studentID
+FROM notifications
+WHERE notificationType = 'Placement'
+AND createdAt >= NOW() - INTERVAL '7 days';
 ```
